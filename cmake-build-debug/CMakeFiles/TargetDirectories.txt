@@ -1,0 +1,4 @@
+/Users/hotice/Documents/VulkanProject/cmake-build-debug/CMakeFiles/VulkanProject.dir
+/Users/hotice/Documents/VulkanProject/cmake-build-debug/CMakeFiles/CopyShaders.dir
+/Users/hotice/Documents/VulkanProject/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/hotice/Documents/VulkanProject/cmake-build-debug/CMakeFiles/rebuild_cache.dir
