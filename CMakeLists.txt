@@ -7,7 +7,8 @@ add_executable(VulkanProject src/main.cpp
         src/VulkanPipeline/VKFrame.cpp
         src/VulkanPipeline/VKFrame.h
         src/VulkanPipeline/VKRenderer.cpp
-        src/VulkanPipeline/VKRenderer.h)
+        src/VulkanPipeline/VKRenderer.h
+        src/Extras/Utils.h)
 
 # === Detect Platform ===
 if (APPLE)
@@ -66,13 +67,9 @@ add_custom_command(TARGET VulkanProject POST_BUILD
 # === ASSIMP ===
 set(ASSIMP_DIR "${CMAKE_SOURCE_DIR}/external/assimp_${PLATFORM}")
 set(ASSIMP_INCLUDE_DIR "${ASSIMP_DIR}/include")
-if (APPLE)
-    set(ASSIMP_LIBRARY_FILE "${ASSIMP_DIR}/lib/libassimp.5.4.3.dylib")
-    set(ASSIMP_COPY_FILE "${ASSIMP_LIBRARY_FILE}")
-else()
-    set(ASSIMP_LIBRARY_FILE "${ASSIMP_LIBRARY_DIR}/assimp-vc143-mt.lib")
-    set(ASSIMP_COPY_FILE "${ASSIMP_DIR}/bin/x64/assimp-vc143-mt.dll")
-endif ()
+set(ASSIMP_LIBRARY_DIR "${ASSIMP_DIR}/lib/x64")
+set(ASSIMP_LIBRARY_FILE "${ASSIMP_LIBRARY_DIR}/assimp-vc143-mt.lib")
+set(ASSIMP_COPY_FILE "${ASSIMP_DIR}/bin/x64/assimp-vc143-mt.dll")
 
 target_include_directories(VulkanProject PRIVATE ${ASSIMP_INCLUDE_DIR})
 target_link_libraries(VulkanProject ${ASSIMP_LIBRARY_FILE})
@@ -81,7 +78,6 @@ add_custom_command(TARGET VulkanProject POST_BUILD
         "${ASSIMP_COPY_FILE}"
         $<TARGET_FILE_DIR:VulkanProject>
 )
-
 # === GLM (Header Only) ===
 set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm")
 target_include_directories(VulkanProject PRIVATE ${GLM_INCLUDE_DIR})
