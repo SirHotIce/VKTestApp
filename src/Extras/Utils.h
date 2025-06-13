@@ -28,6 +28,11 @@ namespace Extras {
         std::vector<VkSurfaceFormatKHR> formats;        //Surface image formats, eg: RGBA, RGB etc and size of each color
         std::vector<VkPresentModeKHR> presentModes;     //the presentation mode for the swap chaim, mailbox, instant, fifo or fifo relaxed
     };
+
+    struct SwapchainImage {
+        VkImage image;
+        VkImageView imageView;
+    };
 } // Extras
 
 #endif //UTILS_H

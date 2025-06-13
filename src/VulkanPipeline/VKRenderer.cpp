@@ -5,6 +5,7 @@
 #include "VKRenderer.h"
 
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <ostream>
 #include <set>
@@ -60,6 +61,161 @@ void VKRenderer::createInstance() {
         std::cout << "Vulkan instance created." << std::endl;
     }
 
+}
+
+void VKRenderer::createSwapChain() {
+    //select best format, p mode and extent
+    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(devices.swapChainSupport.formats);
+    VkPresentModeKHR presentMode = chooseSwapPresentMode(devices.swapChainSupport.presentModes);
+    VkExtent2D swapChainExtent= chooseSwapExtent(devices.swapChainSupport.capabilities);
+    //how many images are in the swap chain, we want 1 more than the min to allow for a triple buffer
+    uint32_t imageCount= devices.swapChainSupport.capabilities.minImageCount + 1;
+    if (imageCount > devices.swapChainSupport.capabilities.maxImageCount) {
+        imageCount = devices.swapChainSupport.capabilities.maxImageCount;
+    }
+    //create info
+    VkSwapchainCreateInfoKHR createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface= surface;
+    createInfo.imageFormat= surfaceFormat.format;
+    createInfo.imageColorSpace= surfaceFormat.colorSpace;
+    createInfo.presentMode= presentMode;
+    createInfo.imageExtent= swapChainExtent;
+    createInfo.minImageCount= imageCount;
+    createInfo.imageArrayLayers= 1;     //Number of layers for each immage in chain
+    createInfo.imageUsage= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  //how this swap chain will be used, usually we want it as image, for depth we can do it in FBO
+    createInfo.preTransform= devices.swapChainSupport.capabilities.currentTransform; //transforms to perfrom on current swwap chain
+    createInfo.compositeAlpha= VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; //how to handle blending image with external graphics (eg: other windows)
+    createInfo.clipped= VK_TRUE;        //whehter to clip the parts of images not in view or not
+
+    //check if ques are independent and assign
+    if (devices.pDsQueFamilies.graphicsFamily!=devices.pDsQueFamilies.presentationFamily) {
+        uint32_t queFamilyIndices[]= {(uint32_t)devices.pDsQueFamilies.graphicsFamily, (uint32_t)devices.pDsQueFamilies.presentationFamily};
+        createInfo.imageSharingMode= VK_SHARING_MODE_CONCURRENT;//both ques share this sw chain if the ques are diff
+        createInfo.queueFamilyIndexCount= 2; //since there are 2
+        createInfo.pQueueFamilyIndices=queFamilyIndices;
+
+    }else {//if they are both same we wont be sharing and the active one will use it
+        createInfo.imageSharingMode= VK_SHARING_MODE_EXCLUSIVE;
+        createInfo.queueFamilyIndexCount= 0;
+        createInfo.pQueueFamilyIndices= nullptr;
+    }
+
+    createInfo.oldSwapchain= nullptr;
+
+    VkResult res= vkCreateSwapchainKHR(devices.logicalDevice, &createInfo, nullptr, &swapChain);
+    if (res!=VK_SUCCESS) {
+        throw std::runtime_error("Failed to create Vulkan swapchain");
+    }
+
+    //save the vars
+    bestSwapchainSettings.surfaceFormat=surfaceFormat;
+
+    bestSwapchainSettings.presentMode= presentMode;
+
+    bestSwapchainSettings.extent= swapChainExtent;
+
+    //get the swap chain images
+    uint32_t swpChainImmageCount;
+    vkGetSwapchainImagesKHR(devices.logicalDevice, swapChain, &swpChainImmageCount, nullptr);
+    std::vector<VkImage> images(swpChainImmageCount);
+    vkGetSwapchainImagesKHR(devices.logicalDevice, swapChain, &swpChainImmageCount, images.data());
+
+    //now we need to reitterate through each of these images and store them as our struct in the list that we have for images
+    for (auto image: images) {
+        //store the image and its view that is created in the fn into the list
+
+        Extras::SwapchainImage toStore={};
+        toStore.image= image;
+        toStore.imageView= createImageViewFromImage(image, surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
+        swapChainImages.push_back(toStore);
+
+
+    }
+}
+
+VkImageView VKRenderer::createImageViewFromImage(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+
+    VkImageView imageView;
+    VkImageViewCreateInfo viewInfo = {};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image= image;                                  //image to create view for
+    viewInfo.format = format;                               //formmat of image data
+    viewInfo.viewType= VK_IMAGE_VIEW_TYPE_2D;               //type of immage, 1D, 2D, Cube etc
+    viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;     //this allows remapping of rgba values however, but we are just using themm as they are by swizzzling identity
+    viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    //subresources allow to view only a part of an image
+    viewInfo.subresourceRange.aspectMask= aspectFlags;      //which aspect we want the immage to view (Eg: Color_bit for viewing color)
+    viewInfo.subresourceRange.baseMipLevel= 0;              //we want to start the mmipmap level at 0
+    viewInfo.subresourceRange.levelCount= 1;                //no of mipmap levels to view
+    viewInfo.subresourceRange.baseArrayLayer= 0;            //start array level to viewfrom
+    viewInfo.subresourceRange.layerCount= 1;                 //Number of array levels to view
+
+    //create image and return
+    VkResult createResult= vkCreateImageView(devices.logicalDevice, &viewInfo, nullptr, &imageView);
+    if (createResult != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create image view");
+    }
+    return imageView;
+
+
+}
+
+VkSurfaceFormatKHR VKRenderer::chooseSwapSurfaceFormat(std::vector<VkSurfaceFormatKHR> formats) {
+    //this meanss it ssuports any so we want to create our own as we want and passs
+    if (formats.size()==1 && formats[0].format == VK_FORMAT_UNDEFINED) {
+        VkSurfaceFormatKHR surfaceFormat;
+        surfaceFormat.format = VK_FORMAT_R8G8B8A8_SRGB;
+        surfaceFormat.colorSpace= VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        return  surfaceFormat;
+    }
+
+    //check if our preferred format is present
+    for (auto format: formats) {
+        if ((format.format == VK_FORMAT_R8G8B8A8_SRGB || format.format == VK_FORMAT_B8G8R8A8_SRGB) && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            return format;
+        }
+    }
+
+    //if not return the first one in the list
+    return formats[0];
+
+}
+
+VkPresentModeKHR VKRenderer::chooseSwapPresentMode(std::vector<VkPresentModeKHR> presentModes) {
+    //check if mailbox is present
+    for (auto presentMode: presentModes) {
+        if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return presentMode;
+        }
+    }
+
+    //if not we return fifo as that is the default
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D VKRenderer::chooseSwapExtent(VkSurfaceCapabilitiesKHR capabilities) {
+    //if the extent is at the numeric liit then the extent can vary otherwise it is the size of the window
+    if (capabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max()) {
+        return capabilities.currentExtent;
+    }
+    else {
+        int bWidth, bHeight;
+        bWidth= vkFrame->getBufferSize().x;
+        bHeight= vkFrame->getBufferSize().y;
+        VkExtent2D extent;
+        extent.width=static_cast<uint32_t>(bWidth);
+        extent.height=static_cast<uint32_t>(bHeight);
+
+
+        //surface also needed to define max and min width and height for the boundary to clamp the values
+        extent.width= std::max(capabilities.minImageExtent.width,std::min(capabilities.maxImageExtent.width,extent.width));
+        extent.height= std::max(capabilities.minImageExtent.height,std::min(capabilities.maxImageExtent.height,extent.height));
+        return extent;
+    }
 }
 
 void VKRenderer::createSurface() {
@@ -277,8 +433,72 @@ bool VKRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     return true;
 }
 
-VKRenderer::VKRenderer(GLFWwindow *window) {
-    this->window = window;
+void VKRenderer::createPipeline() {
+    auto vertShaderCode= readShaderFile("shaders/vert.spv");
+    auto fragShaderCode= readShaderFile("shaders/frag.spv");
+
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+    //shader stage creation informmation
+    VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo = {};
+    vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageCreateInfo.module = vertShaderModule;
+    vertShaderStageCreateInfo.pName = "vert"; //name of the entry fn in vs
+    VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo = {};
+    fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    fragShaderStageCreateInfo.module = fragShaderModule;
+    fragShaderStageCreateInfo.pName = "frag"; //name of entry fn in fs
+
+    VkPipelineShaderStageCreateInfo stages[] = {vertShaderStageCreateInfo, fragShaderStageCreateInfo};
+
+    //pipeline creation
+
+    //Destroy the shader modules
+    vkDestroyShaderModule(devices.logicalDevice, vertShaderModule, nullptr);
+    vkDestroyShaderModule(devices.logicalDevice, fragShaderModule, nullptr);
+}
+
+
+std::vector<char> VKRenderer::readShaderFile(const std::string &fileName) {
+    std::ifstream file(fileName, std::ios::binary|std::ios::ate);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open shader file " + fileName);
+    }
+    //Get current read position to resize the file buffer
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<char> shaderData(fileSize);
+
+    //move the read position to the srart
+    file.seekg(0);
+
+    //Read the file data into the buffer
+    file.read(shaderData.data(), fileSize);
+    //close stream
+    file.close();
+    return shaderData;
+
+}
+
+VkShaderModule VKRenderer::createShaderModule(std::vector<char> code) {
+    VkShaderModuleCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<uint32_t*>(code.data());//it is not converting this to uint32_t this is telling the cpu to interpert this char as an uint
+
+    VkShaderModule shaderModule;
+    VkResult result= vkCreateShaderModule(devices.logicalDevice, &createInfo, nullptr, &shaderModule);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shader module");
+    }
+    return shaderModule;
+}
+
+VKRenderer::VKRenderer(VKFrame* _frame) {
+    this->vkFrame = _frame;
+    this->window = _frame->getWindow();
 }
 
 int VKRenderer::initVulkan() {
@@ -287,6 +507,7 @@ int VKRenderer::initVulkan() {
         createSurface();
         getPhysicalDevice();
         createLogicalDevice();
+        createSwapChain();
     }catch (std::runtime_error &e) {
         std::cerr << "What the hell, what the helly. Vulkan didnt Initialize.\n"<< e.what() << std::endl;
         return EXIT_FAILURE;
@@ -296,6 +517,10 @@ int VKRenderer::initVulkan() {
 
 void VKRenderer::cleanupVulkan() {
     if (instance!=VK_NULL_HANDLE) {
+        for (auto image: swapChainImages) {
+            vkDestroyImageView(devices.logicalDevice, image.imageView, nullptr);
+        }
+        vkDestroySwapchainKHR(devices.logicalDevice, swapChain, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
         vkDestroyDevice(devices.logicalDevice, nullptr);

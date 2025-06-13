@@ -5,7 +5,7 @@
 
 int main() {
     VKFrame vk_frame(800, 600, "Vulkan Test App");
-    VKRenderer renderer(vk_frame.getWindow());
+    VKRenderer renderer(&vk_frame);
     if(renderer.initVulkan()==EXIT_FAILURE) {
         std::cout << "Failed to initialize Vulkan" << std::endl;
         return EXIT_FAILURE;
