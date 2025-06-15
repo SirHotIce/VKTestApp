@@ -456,6 +456,102 @@ void VKRenderer::createPipeline() {
 
     //pipeline creation
 
+    //Vertex Input
+    VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {};
+    vertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputStateCreateInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputStateCreateInfo.pVertexAttributeDescriptions = nullptr; //List of Vertex Binding Description
+    vertexInputStateCreateInfo.vertexBindingDescriptionCount = 0;
+    vertexInputStateCreateInfo.pVertexBindingDescriptions = nullptr;//List of AP Descriptions (data format and where to bind to)
+
+    //Input Assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = {};
+    inputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;  //Primitive typr to assemble to similar to telling gl to draw triangles
+    inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE; //Allow overriding of "strip" topology to start new primitives
+
+    //Viewport and sccissor
+    //Creaate a viewport info struct
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width= (float)bestSwapchainSettings.extent.width;
+    viewport.height = (float)bestSwapchainSettings.extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    //create a scissor info struct
+    VkRect2D scissor = {};
+    scissor.offset = {0, 0};
+    scissor.extent = bestSwapchainSettings.extent;
+
+    VkPipelineViewportStateCreateInfo viewportStateCreateInfo = {};
+    viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportStateCreateInfo.viewportCount = 1;
+    viewportStateCreateInfo.pViewports = &viewport;//set the created viewport as the main viewport
+    viewportStateCreateInfo.scissorCount = 1;
+    viewportStateCreateInfo.pScissors = &scissor;//set made scissor as main
+
+    //Dynamic states go here ----not using yet----
+    //can in future enable dyn state viewport and dy  state scissor for auto resizzing VP while resizing the window
+
+    //Rasterizer
+
+    VkPipelineRasterizationStateCreateInfo rasterizerStateCreateInfo = {};
+    rasterizerStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizerStateCreateInfo.depthClampEnable = VK_FALSE;//basically clips stuff after a certain distance, needs to be checked and enabled in device features
+    rasterizerStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;//whether to discard data and skip rasterizer, not suitable for pipelines with a Frame buffer, use case mostly with compute a nd compute to gen colors
+    rasterizerStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;//how to fill the polygons, fully fill, leave as wireframe or point cloud
+    rasterizerStateCreateInfo.lineWidth = 1.0f; //how thick the line should be when drawn
+    rasterizerStateCreateInfo.cullMode= VK_CULL_MODE_BACK_BIT; //cull the back faces
+    rasterizerStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;//set the winding order to CW or CCW
+    rasterizerStateCreateInfo.depthBiasEnable= VK_FALSE;//this adds a slight bias in the depth map, like we do in OGL to remove shadow acne but this VK does it itself
+
+
+
+    //Multisampling
+    VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = {};
+    multisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
+    multisampleStateCreateInfo.rasterizationSamples= VK_SAMPLE_COUNT_1_BIT; //Number of sammples to use perfragment, if i were doing msaa 4x i would sammple each frag 4x times and avg it
+
+
+    //Blend Attachement to instruct how to handle the blending of colors
+    VkPipelineColorBlendAttachmentState colorBlendAttachmentState = {};
+    colorBlendAttachmentState.colorWriteMask= VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; //which bits to apply the blending to just bitwise operation here we apply to all
+    colorBlendAttachmentState.blendEnable= VK_TRUE;//enable color blend
+
+    //blending color uses the blend equation
+    //blend eqn: (new color alpha * new color) + ((1- new color alpha)* old color)
+
+    colorBlendAttachmentState.srcColorBlendFactor= VK_BLEND_FACTOR_ONE;
+    colorBlendAttachmentState.dstColorBlendFactor= VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachmentState.alphaBlendOp= VK_BLEND_OP_ADD;
+    //Summmarizzed ( 1 * new alpha) + (0 * old alpha) = just new alpjha
+
+
+    //Color Blending
+    VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = {};
+    colorBlendStateCreateInfo.sType= VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;//whether to blend colors logically or mathematically
+    colorBlendStateCreateInfo.attachmentCount = 1;
+    colorBlendStateCreateInfo.pAttachments = &colorBlendAttachmentState; //attach the blend instructions attachment that we made abpve to this blend state
+
+    //Pipeline Layout (TODO: Apply Future Descriptor set layouts)
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
+    pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCreateInfo.setLayoutCount = 0; //currently no descriptor set so ct is 0
+    pipelineLayoutCreateInfo.pSetLayouts = nullptr; //currently no d sets
+    pipelineLayoutCreateInfo.pushConstantRangeCount = 0; //no p constants so ct 0
+    pipelineLayoutCreateInfo.pPushConstantRanges= nullptr; // no p consts rn
+
+
+    VkResult pipelineCreationStatus= vkCreatePipelineLayout(devices.logicalDevice, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
+
+    if (pipelineCreationStatus!=VK_SUCCESS) {
+        throw std::runtime_error("failed to create pipeline layout");
+    }
     //Destroy the shader modules
     vkDestroyShaderModule(devices.logicalDevice, vertShaderModule, nullptr);
     vkDestroyShaderModule(devices.logicalDevice, fragShaderModule, nullptr);
@@ -517,6 +613,7 @@ int VKRenderer::initVulkan() {
 
 void VKRenderer::cleanupVulkan() {
     if (instance!=VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(devices.logicalDevice, pipelineLayout, nullptr);
         for (auto image: swapChainImages) {
             vkDestroyImageView(devices.logicalDevice, image.imageView, nullptr);
         }

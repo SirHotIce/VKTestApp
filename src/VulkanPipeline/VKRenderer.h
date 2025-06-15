@@ -32,9 +32,13 @@ private:
     VkInstance instance;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapChain;
+    VkPipelineLayout pipelineLayout;
+
     std::vector<Extras::SwapchainImage> swapChainImages;             //making a list to store the images that are in the swap chain in our custom struct that holds immage and image view, image is like a physical so we are not creatinf but accessing it, but to interface with it we need image view
     VKFrame* vkFrame;
     GLFWwindow* window;
+
+
     void createInstance();
     bool checkExtensionSupport(std::vector<const char*> extensions);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
